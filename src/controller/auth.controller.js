@@ -7,8 +7,6 @@ const cookieOptions = {
     httpOnly: true
 }
 
-// signUp a new user
-
 export const signUp = asyncHandler(async (req, res) => {
     // getting the data from user
     const { name, email , password } =  req.body;
@@ -88,5 +86,19 @@ export const logout = asyncHandler(async (req, res) => {
     res.status(200).json({
         success: true,
         message: "Logged out"
+    })
+})
+
+
+export const getProfile = asyncHandler(async (req, res) => {
+    const { user } = req
+
+    if (!user) {
+        throw new CustomError("User not found", 400)
+    }
+
+    res.status(200).json({
+        success: true,
+        user
     })
 })

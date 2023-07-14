@@ -114,12 +114,72 @@ export const getProductByCollectionId = asyncHandler( async (req, res) => {
 })
 
 export const updateProduct = asyncHandler(async (req, res) =>{
-    const { id: productId } = req.params
+    const { id: productId } = req.params;
+    const fieldsToUpdate = req.body;
 
+    const product = await Product.findById(productId)
 
-    // const product = await Product.findByIdAndUpdate(productId, {}, {})
+    if (!product) {
+        throw new CustomError("Product not found", 400)
+    }
 
+    const deletePhotos = await Promise.all(
+        product.photos.map(async (elem, index) => {
+            await s3FileDelete({
+                bucketName:  config.S3_BUCKET_NAME,
+                key: `products/${productId}/photo_${index + 1}.png`
+            })
+        })
+    )
 
+    await deletePhotos
+
+    const form = formidable({ multiples: true, keepExtensions: true });
+
+    form.parse(req, async function(err, fields, files) {
+        if (err) {
+            new CustomError(err.message || "something went wrong", 500)
+        }
+
+        console.log(fields, files);
+
+        const imgArrayResp = Promise.all(
+            Object.keys(files).map( async (file, index) => {
+                const element = file[fileKey]
+                console.log(element);
+
+                const data = fs.readFileSync(element.filepath)
+
+                const upload =  await s3FileUpload({
+                    bucketName: config.S3_BUCKET_NAME,
+                    key: `products/${productId}/photo_${index + 1}.png`,
+                    body: data,
+                    contentType: element.mimetype
+                })
+
+                // console.log(upload);
+                return {
+                    secure_url: upload.Location
+                }
+            })
+        )
+        const imgArray = await imgArrayResp
+        
+        const updateFields = {
+            photos: imgArray,
+            ...fields
+        }
+
+        const updatedProduct = await Product.updateOne(productId, updateFields, {
+            new: true,
+            runValidators: true,
+        })
+
+        res.status(200).json({
+            success: true,
+            updatedProduct
+        })
+    })
 })
 
 export const deleteProduct = asyncHandler( async (req, res) => {

@@ -41,24 +41,28 @@ export const getAllCoupons = asyncHandler(async (req, res) => {
 })
 
 export const updateCoupons = asyncHandler(async (req, res) => {
-    const {code, discount} = req.body
+    const { discount, action } = req.body
     const {id: couponId} = req.params
 
-    const findCoupon = await Coupon.findById(couponId)
+    const coupon = await Coupon.findByIdAndUpdate(couponId, 
+        {
+            active: action,
+            discount
+        },
+        {
+            new: true,
+            runValidators: true
+        }
+    )
 
-    if (!findCoupon) {
+    if (!coupon) {
         throw new CustomError("Coupoon not found", 400)
     }
-
-    const updatedCoupon = await Coupon.updateOne(couponId, {
-        code,
-        discount
-    })
     
     res.status(200).json({
         success:true,
         message: "your coupon is updated",
-        updateCoupons
+        coupon
     })
 })
 

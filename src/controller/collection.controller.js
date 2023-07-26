@@ -20,7 +20,6 @@ export const createCollection = asyncHandler(async (req, res) => {
     })
 })
 
-
 export const updateCollection = asyncHandler(async (req, res) => {
     const {name} = req.body
     const {id: collectionId} = req.params

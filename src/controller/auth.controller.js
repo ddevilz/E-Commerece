@@ -102,3 +102,74 @@ export const getProfile = asyncHandler(async (req, res) => {
         user
     })
 })
+
+export const forgotPassword = asyncHandler(async (req, res) => {
+    const {email} = req.body
+
+    const user = await User.findOne({email})
+
+    if (!user) {
+        throw new CustomError("User not found", 400)
+    }
+
+    const resetToken = user.forgotPasswordToken()
+
+    await user.save({validateBeforeSave: false})
+
+    const resetUrl = `${req.protocol}://${req.get("host")}/api/v1/auth/password/reset/${resetToken}`
+
+    const message = `Your password reset link is here as follows: \n\n ${resetUrl}`
+
+    try {
+        const options = {
+            email: user.email,
+            subject: "password reset mail",
+            message
+        }
+        await mailHelper(options)
+    } catch (error) {
+        user.forgotPasswordToken = undefined;
+        user.forgotPasswordExpiry = undefined;
+
+        await user.save({validateBeforeSave: true})
+
+        throw new CustomError(error.message || "Email could not be sent", 500)
+    }
+})
+
+export const resetPassword = asyncHandler(async (req, res) => {
+    const {token: resetToken} = req.params
+    const {password, confirmPassword} = req.body
+
+    if (password !== confirmPassword) {
+        throw new CustomError("Password does not match", 400)
+    }
+
+    const resetPasswordToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest("hex")
+
+    const user = await User.findOne({
+        forgotPasswordToken: resetPasswordToken,
+        forgotPasswordExpiry: { $gt : Date.now() }
+    })
+
+    if (!user) {
+        throw new CustomError("Password token is invalid or expired.", 400)
+    }
+
+    user.password = password
+    user.forgotPasswordToken = undefined
+    user.forgotPasswordExpiry = undefined
+
+    await user.save()
+
+    const token = user.genJWTtoken()
+    res.cookie("token", token, cookieOptions)
+
+    res.status(200).json({
+        success: true,
+        user
+    })
+})

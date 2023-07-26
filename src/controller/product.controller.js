@@ -30,8 +30,8 @@ export const addProduct = asyncHandler(async (req, res) => {
         }
 
         const imgArrayResp = Promise.all(
-            Object.keys(files).map( async (file, index) => {
-                const element = file[fileKey]
+            Object.keys(files).map( async (fileKey, index) => {
+                const element = files[fileKey]
                 console.log(element);
 
                 const data = fs.readFileSync(element.filepath)
@@ -114,25 +114,74 @@ export const getProductByCollectionId = asyncHandler( async (req, res) => {
 })
 
 export const updateProduct = asyncHandler(async (req, res) => {
-    const { id: productId } = req.params
+    const productId = req.params.productId;
 
-    const product = await Product.findById(productId)
+    // Assuming you have a function to check if the product with the given ID exists in the database
+    const existingProduct = await Product.findById(productId);
 
-    if (!product) {
-        throw new CustomError("Product not found", 400)
+    if (!existingProduct) {
+        throw new CustomError("Product not found", 404);
     }
 
     const form = formidable({ multiples: true, keepExtensions: true });
 
-    form.parse(req, async function(err, fields, files) {
+    form.parse(req, async function (err, fields, files) {
         if (err) {
-            throw new CustomError(err.message || "something went wrong", 500)
+            throw new CustomError(err.message || "something went wrong", 500);
         }
 
-        
+        if (
+            !fields.name ||
+            !fields.price ||
+            !fields.description ||
+            !fields.collectionId
+        ) {
+            throw new CustomError("Please fill all the fields", 500);
+        }
 
-    })    
-})
+        const imgArrayResp = Promise.all(
+            Object.keys(files).map(async (fileKey, index) => {
+                const element = files[fileKey];
+                console.log(element);
+
+                const data = fs.readFileSync(element.filepath);
+
+                const upload = await s3FileUpload({
+                    bucketName: config.S3_BUCKET_NAME,
+                    key: `products/${productId}/photo_${index + 1}.png`,
+                    body: data,
+                    contentType: element.mimetype,
+                });
+
+                return {
+                    secure_url: upload.Location,
+                };
+            })
+        );
+
+        const imgArray = await imgArrayResp;
+
+        // Update the existing product with the new data and images
+        existingProduct.photos = imgArray;
+        existingProduct.name = fields.name;
+        existingProduct.price = fields.price;
+        existingProduct.description = fields.description;
+        existingProduct.collectionId = fields.collectionId;
+
+        // Save the updated product in the database
+        const updatedProduct = await existingProduct.save();
+
+        if (!updatedProduct) {
+            throw new CustomError("Product failed to update in DB", 500);
+        }
+
+        res.status(200).json({
+            success: true,
+            product: updatedProduct,
+        });
+    });
+});
+
 
 export const deleteProduct = asyncHandler( async (req, res) => {
     const { id: productId } = req.params
